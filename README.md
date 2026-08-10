@@ -39,7 +39,8 @@ python3 --version
 ### Étape 2 — Environnement virtuel (recommandé)
 
 ```bash
-cd perplexity_clone
+git clone assistant-recherche-ia
+cd assistant-ia-perplexity/perplexity_clone
 python3 -m venv venv
 source venv/bin/activate      # sous Windows : venv\Scripts\activate
 ```
@@ -47,7 +48,7 @@ source venv/bin/activate      # sous Windows : venv\Scripts\activate
 ### Étape 3 — Installer les dépendances
 
 ```bash
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 Toutes ces librairies sont gratuites et open-source, aucune clé API n'est
