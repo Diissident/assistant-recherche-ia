@@ -78,7 +78,7 @@ async def run_pipeline(query: str, verbose: bool = True) -> dict:
         for step, duration in timings.items():
             print(f"{step}: {duration:.2f}s")
 
-    sources = list({c["url"] for c in top_chunks})
+    sources = [{"n": i + 1, "url": c["url"]} for i, c in enumerate(top_chunks)]
 
     return {
         "query": query,
@@ -111,4 +111,4 @@ if __name__ == "__main__":
     print(result["answer"])
     print("\n=== SOURCES ===")
     for s in result["sources"]:
-        print(f"- {s}")
+        print(f"[Source {s['n']}] {s['url']}")
