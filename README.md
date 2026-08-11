@@ -86,7 +86,7 @@ utilise l'option B.
 ### En ligne de commande
 
 ```bash
-python pipeline.py "Quelles sont les nouveautés en intelligence artificielle cette semaine ?"
+python pipeline.py "Ma requête"
 ```
 
 ### Dans du code Python
