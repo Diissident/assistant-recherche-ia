@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carnet de recherche</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap');
+
+:root{
+  --bg:#0b0a08;
+  --panel:#131110;
+  --panel-2:#1a1713;
+  --edge:#26221b;
+  --amber:#ffb454;
+  --amber-bright:#ffd28a;
+  --amber-dim:#8a6a42;
+  --amber-dimmer:#4a3a24;
+  --cream:#ede6d8;
+  --red:#ff6b5c;
+  --green:#8fd19e;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--cream);
+  font-family:'IBM Plex Mono',monospace;}
+#root{height:100vh;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const {useState, useEffect, useRef, useCallback} = React;
+
+const API = "http://localhost:8000";
+
+const STEP_LABELS = {
+  decompose: "Décomposition de la question",
+  search: "Recherche web",
+  scrape: "Lecture des pages",
+  chunk: "Découpage du contenu",
+  rerank: "Tri par pertinence",
+  generate: "Rédaction de la réponse",
+};
+const STEP_ORDER = ["decompose","search","scrape","chunk","rerank","generate"];
+
+function fmtDate(ts){
+  const d = new Date(ts*1000);
+  return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short'}) + ' · ' +
+         d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+}
+function fmtSecs(s){ return s < 1 ? Math.round(s*1000)+'ms' : s.toFixed(1)+'s'; }
+
+/* ---------- Ledger : lecture en direct des étapes du pipeline ---------- */
+function Ledger({active}){
+  const [i, setI] = useState(0);
+  useEffect(()=>{
+    if(!active){ setI(0); return; }
+    const t = setInterval(()=> setI(v => Math.min(v+1, STEP_ORDER.length-1)),
+      [3200,1800,2600,300,9000,14000][i] || 4000);
+    return ()=>clearInterval(t);
+  }, [active, i]);
+  if(!active) return null;
+  return (
+    <div className="ledger">
+      <div className="ledger-title">Registre du pipeline</div>
+      {STEP_ORDER.map((key, idx)=>(
+        <div key={key} className={"ledger-row " + (idx < i ? "done" : idx===i ? "current" : "pending")}>
+          <span className="ledger-dot"/>
+          <span>{STEP_LABELS[key]}</span>
+        </div>
+      ))}
+      <style>{`
+        .ledger{background:var(--panel-2);border:1px solid var(--edge);border-radius:8px;
+          padding:14px 16px;margin-top:10px;max-width:340px;}
+        .ledger-title{font-size:0.7rem;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--amber-dim);margin-bottom:10px;}
+        .ledger-row{display:flex;align-items:center;gap:9px;font-size:0.82rem;
+          padding:4px 0;color:var(--amber-dimmer);}
+        .ledger-row.current{color:var(--amber-bright);}
+        .ledger-row.done{color:var(--amber-dim);}
+        .ledger-dot{width:6px;height:6px;border-radius:50%;background:var(--amber-dimmer);
+          flex:none;}
+        .ledger-row.current .ledger-dot{background:var(--amber);
+          box-shadow:0 0 6px var(--amber);animation:pulse 1.1s ease-in-out infinite;}
+        .ledger-row.done .ledger-dot{background:var(--amber-dim);}
+        @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.3;}}
+      `}</style>
+    </div>
+  );
+}
+
+/* ---------- Ligne de statistiques (temps réel par étape, une fois fini) ---------- */
+function TimingRow({timings}){
+  if(!timings || Object.keys(timings).length===0) return null;
+  return (
+    <div className="timing-row">
+      {STEP_ORDER.filter(k=>timings[k]!==undefined).map(k=>(
+        <span key={k}>{STEP_LABELS[k]} <b>{fmtSecs(timings[k])}</b></span>
+      ))}
+      <style>{`
+        .timing-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;
+          font-size:0.72rem;color:var(--amber-dimmer);}
+        .timing-row b{color:var(--amber-dim);font-weight:600;}
+      `}</style>
+    </div>
+  );
+}
+
+function Sources({sources}){
+  if(!sources || sources.length===0) return null;
+  return (
+    <div className="sources">
+      <div className="sources-title">Sources citées</div>
+      <ol>
+        {sources.map(s=>(
+          <li key={s.n}>
+            <span className="src-n">[{s.n}]</span>
+            <a href={s.url} target="_blank" rel="noreferrer">{s.url}</a>
+          </li>
+        ))}
+      </ol>
+      <style>{`
+        .sources{margin-top:14px;border-top:1px solid var(--edge);padding-top:10px;}
+        .sources-title{font-size:0.7rem;letter-spacing:.1em;text-transform:uppercase;
+          color:var(--amber-dim);margin-bottom:8px;}
+        .sources ol{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px;}
+        .sources li{font-size:0.76rem;display:flex;gap:8px;align-items:baseline;}
+        .src-n{color:var(--amber-dim);flex:none;}
+        .sources a{color:var(--amber);text-decoration:none;word-break:break-all;}
+        .sources a:hover{text-decoration:underline;}
+      `}</style>
+    </div>
+  );
+}
+
+function Message({role, content, sources, timings}){
+  const isUser = role === "user";
+  return (
+    <div className={"msg " + (isUser ? "msg-user" : "msg-assistant")}>
+      <div className="msg-label">{isUser ? "Vous" : "Assistant"}</div>
+      <div className="msg-body">{content}</div>
+      {!isUser && <TimingRow timings={timings}/>}
+      {!isUser && <Sources sources={sources}/>}
+      <style>{`
+        .msg{padding:18px 0;border-bottom:1px solid var(--edge);}
+        .msg-label{font-size:0.7rem;letter-spacing:.12em;text-transform:uppercase;
+          margin-bottom:8px;color:${isUser ? "var(--amber)" : "var(--green)"};}
+        .msg-body{font-family:'Source Serif 4',serif;font-size:1.05rem;line-height:1.7;
+          color:var(--cream);white-space:pre-wrap;}
+        .msg-user .msg-body{font-family:'IBM Plex Mono',monospace;font-size:0.92rem;
+          color:var(--amber-bright);}
+      `}</style>
+    </div>
+  );
+}
+
+function Sidebar({conversations, activeId, onSelect, onNew, onDelete}){
+  return (
+    <div className="sidebar">
+      <div className="brand">
+        <div className="brand-mark">§</div>
+        <div>
+          <div className="brand-title">Carnet de recherche</div>
+          <div className="brand-sub">assistant local · sans coût</div>
+        </div>
+      </div>
+      <button className="new-btn" onClick={onNew}>+ Nouvelle recherche</button>
+      <div className="conv-list">
+        {conversations.length === 0 && (
+          <div className="empty">Aucune recherche enregistrée pour l'instant.</div>
+        )}
+        {conversations.map(c=>(
+          <div key={c.id} className={"conv-item " + (c.id===activeId ? "active" : "")}
+               onClick={()=>onSelect(c.id)}>
+            <div className="conv-title">{c.title}</div>
+            <div className="conv-date">{fmtDate(c.created_at)}</div>
+            <button className="conv-del" onClick={(e)=>{e.stopPropagation(); onDelete(c.id);}}
+                    title="Supprimer">×</button>
+          </div>
+        ))}
+      </div>
+      <style>{`
+        .sidebar{width:280px;flex:none;background:var(--panel);border-right:1px solid var(--edge);
+          display:flex;flex-direction:column;padding:20px 16px;}
+        .brand{display:flex;gap:10px;align-items:center;margin-bottom:20px;}
+        .brand-mark{width:34px;height:34px;border:1px solid var(--amber-dim);border-radius:8px;
+          display:flex;align-items:center;justify-content:center;color:var(--amber);
+          font-size:1.1rem;flex:none;}
+        .brand-title{font-size:0.86rem;font-weight:600;color:var(--amber-bright);}
+        .brand-sub{font-size:0.68rem;color:var(--amber-dimmer);margin-top:2px;}
+        .new-btn{background:transparent;border:1px solid var(--amber-dim);color:var(--amber);
+          border-radius:8px;padding:10px 12px;font-family:inherit;font-size:0.8rem;
+          cursor:pointer;margin-bottom:18px;text-align:left;}
+        .new-btn:hover{border-color:var(--amber);background:var(--panel-2);}
+        .conv-list{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:4px;}
+        .empty{color:var(--amber-dimmer);font-size:0.76rem;padding:10px 4px;}
+        .conv-item{position:relative;padding:10px 30px 10px 10px;border-radius:6px;
+          cursor:pointer;}
+        .conv-item:hover{background:var(--panel-2);}
+        .conv-item.active{background:var(--panel-2);border-left:2px solid var(--amber);}
+        .conv-title{font-size:0.8rem;color:var(--cream);white-space:nowrap;overflow:hidden;
+          text-overflow:ellipsis;}
+        .conv-date{font-size:0.66rem;color:var(--amber-dimmer);margin-top:3px;}
+        .conv-del{position:absolute;right:6px;top:8px;background:none;border:none;
+          color:var(--amber-dimmer);font-size:1rem;cursor:pointer;padding:2px 6px;
+          border-radius:4px;display:none;}
+        .conv-item:hover .conv-del{display:block;}
+        .conv-del:hover{color:var(--red);}
+      `}</style>
+    </div>
+  );
+}
+
+function App(){
+  const [conversations, setConversations] = useState([]);
+  const [activeId, setActiveId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [apiUp, setApiUp] = useState(null);
+  const scrollRef = useRef(null);
+
+  const checkHealth = useCallback(async ()=>{
+    try{
+      const r = await fetch(API + "/health");
+      setApiUp(r.ok);
+    }catch(e){ setApiUp(false); }
+  }, []);
+
+  const loadConversations = useCallback(async ()=>{
+    try{
+      const r = await fetch(API + "/conversations");
+      const data = await r.json();
+      setConversations(data);
+    }catch(e){ /* API pas encore lancée */ }
+  }, []);
+
+  useEffect(()=>{ checkHealth(); loadConversations(); }, []);
+
+  useEffect(()=>{
+    if(scrollRef.current){
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, loading]);
+
+  async function selectConversation(id){
+    setActiveId(id);
+    const r = await fetch(`${API}/conversations/${id}/messages`);
+    const data = await r.json();
+    setMessages(data);
+  }
+
+  function newConversation(){
+    setActiveId(null);
+    setMessages([]);
+    setInput("");
+  }
+
+  async function deleteConversation(id){
+    await fetch(`${API}/conversations/${id}`, {method:"DELETE"});
+    if(id === activeId) newConversation();
+    loadConversations();
+  }
+
+  async function send(){
+    const query = input.trim();
+    if(!query || loading) return;
+    setInput("");
+    setMessages(m => [...m, {role:"user", content:query, sources:[], timings:{}}]);
+    setLoading(true);
+
+    try{
+      const r = await fetch(API + "/ask", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({query, conversation_id: activeId}),
+      });
+      const data = await r.json();
+      setActiveId(data.conversation_id);
+      setMessages(m => [...m, {
+        role:"assistant", content:data.answer,
+        sources:data.sources, timings:data.timings,
+      }]);
+      loadConversations();
+    }catch(e){
+      setMessages(m => [...m, {
+        role:"assistant",
+        content:"Impossible de joindre l'API locale. Vérifie que le serveur tourne (uvicorn api:app --reload).",
+        sources:[], timings:{},
+      }]);
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="app">
+      <Sidebar conversations={conversations} activeId={activeId}
+               onSelect={selectConversation} onNew={newConversation}
+               onDelete={deleteConversation}/>
+      <div className="main">
+        {apiUp === false && (
+          <div className="api-warning">
+            API locale injoignable sur {API}. Lance <code>uvicorn api:app --reload</code> dans le dossier du projet.
+          </div>
+        )}
+        <div className="thread" ref={scrollRef}>
+          {messages.length === 0 && !loading && (
+            <div className="intro">
+              <div className="intro-mark">§</div>
+              <p>Pose une question. La recherche s'appuie sur le web,
+                 le contenu est passé au crible d'un modèle tournant en local —
+                 aucune donnée n'est envoyée à un service tiers.</p>
+            </div>
+          )}
+          {messages.map((m,i)=>(
+            <Message key={i} role={m.role} content={m.content}
+                     sources={m.sources} timings={m.timings}/>
+          ))}
+          {loading && <Ledger active={loading}/>}
+        </div>
+        <div className="composer">
+          <textarea
+            value={input}
+            onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); send(); } }}
+            placeholder="Pose ta question de recherche…"
+            rows={1}
+          />
+          <button onClick={send} disabled={loading || !input.trim()}>
+            {loading ? "…" : "Envoyer"}
+          </button>
+        </div>
+      </div>
+      <style>{`
+        .app{display:flex;height:100vh;}
+        .main{flex:1;display:flex;flex-direction:column;min-width:0;}
+        .api-warning{background:#2a1712;border-bottom:1px solid var(--red);color:var(--red);
+          font-size:0.8rem;padding:9px 24px;}
+        .api-warning code{background:rgba(255,255,255,.06);padding:1px 6px;border-radius:4px;}
+        .thread{flex:1;overflow-y:auto;padding:28px 40px;max-width:760px;width:100%;
+          margin:0 auto;}
+        .intro{display:flex;flex-direction:column;align-items:flex-start;gap:14px;
+          padding-top:60px;max-width:440px;}
+        .intro-mark{width:44px;height:44px;border:1px solid var(--amber-dim);border-radius:10px;
+          display:flex;align-items:center;justify-content:center;color:var(--amber);
+          font-size:1.4rem;}
+        .intro p{color:var(--amber-dim);font-size:0.9rem;line-height:1.6;margin:0;}
+        .composer{display:flex;gap:10px;padding:16px 40px 24px;max-width:760px;width:100%;
+          margin:0 auto;}
+        .composer textarea{flex:1;resize:none;background:var(--panel);
+          border:1px solid var(--edge);border-radius:10px;color:var(--cream);
+          font-family:'IBM Plex Mono',monospace;font-size:0.88rem;padding:12px 14px;
+          outline:none;}
+        .composer textarea:focus{border-color:var(--amber-dim);}
+        .composer button{background:var(--amber);color:#181410;border:none;
+          border-radius:10px;padding:0 20px;font-family:inherit;font-size:0.85rem;
+          font-weight:600;cursor:pointer;}
+        .composer button:disabled{background:var(--amber-dimmer);color:var(--panel);
+          cursor:not-allowed;}
+      `}</style>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

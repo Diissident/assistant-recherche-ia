@@ -17,6 +17,7 @@ import requests
 from config import (GROQ_API_KEY, GROQ_MODEL, LLM_BACKEND, MAX_ANSWER_TOKENS,
                      OLLAMA_HOST, OLLAMA_MODEL)
 
+
 def decompose_query(query: str) -> list[str]:
     """
     Décompose une question potentiellement complexe en 1 à 3 sous-requêtes
@@ -90,6 +91,7 @@ def build_prompt(query: str, chunks: list[dict]) -> str:
         "Réponse (avec citations [Source N]):"
     )
 
+
 def generate_ollama(prompt: str) -> str:
     """
     Appelle un modèle local via Ollama (gratuit, aucune clé API).
@@ -105,7 +107,7 @@ def generate_ollama(prompt: str) -> str:
     resp = requests.post(
         f"{OLLAMA_HOST}/api/generate",
         json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-        timeout=600,
+        timeout=120,
     )
     resp.raise_for_status()
     return resp.json()["response"]

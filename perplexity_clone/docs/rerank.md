@@ -26,14 +26,22 @@ Découpe un texte long en chunks de taille fixe approximative.
 - **Détail d'implémentation** : les chunks résiduels de moins de 20 mots
   (souvent en fin de texte) sont ignorés car trop peu informatifs
 
-### `rerank(query, chunks, top_k=TOP_K_CHUNKS) -> list[dict]`
-Classe les chunks par pertinence et retourne les meilleurs.
+### `rerank(query, chunks, top_k=TOP_K_CHUNKS, min_score=MIN_RERANK_SCORE) -> list[dict]`
+Classe les chunks par pertinence, filtre ceux jugés hors-sujet, et retourne
+les meilleurs restants.
 
 - **Paramètre** `query` : question de l'utilisateur
 - **Paramètre** `chunks` : liste de chunks candidats (issus de `chunk_text`)
-- **Paramètre** `top_k` : nombre de chunks à garder après tri
-- **Retour** : chunks triés par score décroissant, avec une clé `score`
-  ajoutée à chaque dict
+- **Paramètre** `top_k` : nombre de chunks à garder après tri/filtrage
+- **Paramètre** `min_score` : seuil minimum (0-1) pour qu'un chunk soit
+  conservé, appliqué au score normalisé (voir ci-dessous)
+- **Retour** : chunks triés par score décroissant, avec les clés `score`
+  (score brut du cross-encoder) et `score_norm` (0-1) ajoutées
+- **Détail** : le cross-encoder renvoie un score brut non borné (un logit).
+  Il est passé dans une sigmoïde (`1 / (1 + e^-score)`) pour obtenir une
+  valeur entre 0 et 1, plus simple à seuiller. Si le filtrage élimine tous
+  les chunks (question très pointue, sources imparfaites), le meilleur
+  chunk est gardé quand même pour éviter un pipeline complètement vide.
 - **Fonctionnement interne** : le modèle cross-encoder évalue chaque paire
   (question, chunk) et produit un score de pertinence — contrairement à
   une simple similarité d'embeddings, le cross-encoder regarde la question

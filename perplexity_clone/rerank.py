@@ -84,7 +84,7 @@ def rerank(query: str, chunks: list[dict], top_k: int = TOP_K_CHUNKS,
     for chunk, score in zip(chunks, scores):
         chunk["score"] = float(score)
         # Le cross-encoder retourne un score brut non borné (logit) ; on le
-        # ramène entre 0 et 1 pour avoir un seuil lisible.
+        # ramène entre 0 et 1 avec une sigmoïde pour avoir un seuil lisible.
         chunk["score_norm"] = 1 / (1 + math.exp(-chunk["score"]))
 
     ranked = sorted(chunks, key=lambda c: c["score"], reverse=True)

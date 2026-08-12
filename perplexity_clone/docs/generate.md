@@ -7,6 +7,17 @@ gratuits interchangeables.
 
 ## Fonctions
 
+### `decompose_query(query: str) -> list[str]`
+Décompose une question potentiellement complexe en 1 à 3 sous-requêtes de
+recherche plus ciblées, via un appel au LLM configuré.
+
+- **Paramètre** `query` : question de l'utilisateur
+- **Retour** : liste de 1 à `MAX_SUBQUERIES` sous-requêtes (la question
+  d'origine si elle est déjà simple)
+- **Coût** : un appel LLM supplémentaire avant la recherche, donc un peu
+  de latence en plus — désactivable via `ENABLE_QUERY_DECOMPOSITION` dans
+  `config.py`
+
 ### `build_prompt(query: str, chunks: list[dict]) -> str`
 Construit le prompt final envoyé au LLM.
 

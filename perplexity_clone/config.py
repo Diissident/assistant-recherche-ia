@@ -9,14 +9,23 @@ import os
 
 # --- Recherche web ---
 SEARCH_ENGINE = "duckduckgo"      # moteur utilisé (gratuit, pas de clé API)
-MAX_SEARCH_RESULTS = 8            # nombre de pages candidates par requête
+MAX_SEARCH_RESULTS = 8            # nombre de pages candidates par sous-requête
+MAX_TOTAL_PAGES = 8                # plafond global de pages retenues, tous
+                                    # les sous-requêtes confondues (évite que
+                                    # la décomposition ne multiplie le volume
+                                    # envoyé au reranker sans limite)
+MAX_CHUNKS_TO_RERANK = 40          # plafond du nombre total de chunks
+                                    # envoyés au reranker, indépendamment du
+                                    # nombre de pages : des pages longues
+                                    # (articles de fond) génèrent beaucoup
+                                    # plus de chunks que des pages courtes,
+                                    # donc le nombre de pages seul ne suffit
+                                    # pas à borner le temps de reranking
 SEARCH_TIMEOUT = 5                # secondes avant abandon d'une requête de recherche
-MAX_TOTAL_PAGES = 8
-MAX_CHUNKS_TO_RERANK = 40
 
 # --- Scraping ---
 SCRAPE_TIMEOUT = 3                # secondes avant abandon du scraping d'une page
-MAX_CONCURRENT_SCRAPES = 10        # nombre de pages scrapées en parallèle
+MAX_CONCURRENT_SCRAPES = 8        # nombre de pages scrapées en parallèle
 MIN_TEXT_LENGTH = 200             # caractères minimum pour garder une page
 
 # --- Chunking ---
@@ -40,17 +49,16 @@ ENABLE_QUERY_DECOMPOSITION = True # décompose les questions complexes en
                                    # plusieurs sous-requêtes de recherche
 MAX_SUBQUERIES = 3                # nombre max de sous-requêtes générées
 
-
 # --- Génération LLM ---
 # Deux options gratuites : Ollama en local (aucune clé), ou Groq (clé API gratuite).
 LLM_BACKEND = "ollama"            # "ollama" ou "groq"
-OLLAMA_MODEL = "llama3.2:3b"      # modèle local via Ollama (gratuit, tourne en local)
+OLLAMA_MODEL = "llama3.2:3b"      # 8B -> 3B : le plus gros levier sur CPU faible      # modèle local via Ollama (gratuit, tourne en local)
 OLLAMA_HOST = "http://localhost:11434"
 
 GROQ_MODEL = "llama-3.1-8b-instant"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")  # clé gratuite sur console.groq.com
 
-MAX_ANSWER_TOKENS = 500
+MAX_ANSWER_TOKENS = 400
 
 # --- Cache ---
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache_data")

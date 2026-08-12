@@ -12,7 +12,7 @@ import time
 import generate
 import rerank
 import search
-from config import ENABLE_QUERY_DECOMPOSITION, MAX_CHUNKS_TO_RERANK
+from config import ENABLE_QUERY_DECOMPOSITION, MAX_CHUNKS_TO_RERANK, MAX_TOTAL_PAGES
 from scraper import scrape_many
 
 
@@ -60,6 +60,10 @@ async def run_pipeline(query: str, verbose: bool = True) -> dict:
                 urls.append(href)
     timings["search"] = time.time() - t_search
 
+    # Plafond global : quel que soit le nombre de sous-requêtes générées,
+    # on ne scrape/reranke jamais plus de MAX_TOTAL_PAGES pages au total.
+    urls = urls[:MAX_TOTAL_PAGES]
+
     # 2. Scraping des pages trouvées
     t1 = time.time()
     scraped = await scrape_many(urls)
@@ -73,7 +77,7 @@ async def run_pipeline(query: str, verbose: bool = True) -> dict:
             "timings": timings,
         }
 
-   # 3. Chunking de chaque page scrapée
+    # 3. Chunking de chaque page scrapée
     t2 = time.time()
     per_page_chunks = [rerank.chunk_text(page["text"], page["url"]) for page in scraped]
 
