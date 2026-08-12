@@ -12,6 +12,7 @@ import time
 import generate
 import rerank
 import search
+from config import ENABLE_QUERY_DECOMPOSITION, MAX_CHUNKS_TO_RERANK
 from scraper import scrape_many
 
 
@@ -35,11 +36,29 @@ async def run_pipeline(query: str, verbose: bool = True) -> dict:
     timings = {}
     t0 = time.time()
 
-    # 1. Recherche web (une seule requête ici ; extensible à plusieurs
-    #    sous-requêtes via search.search_multiple si besoin)
-    results = await search.search_async(query)
-    urls = [r["href"] for r in results if "href" in r]
-    timings["search"] = time.time() - t0
+    # 1. Décomposition éventuelle de la question en sous-requêtes, puis
+    #    recherche web sur chacune d'elles (en parallèle).
+    if ENABLE_QUERY_DECOMPOSITION:
+        subqueries = generate.decompose_query(query)
+    else:
+        subqueries = [query]
+    timings["decompose"] = time.time() - t0
+
+    t_search = time.time()
+    results_by_query = await search.search_multiple(subqueries)
+
+    # Fusion des résultats de toutes les sous-requêtes, en dédupliquant
+    # les URLs déjà vues (une même page peut ressortir sur plusieurs
+    # sous-requêtes).
+    urls = []
+    seen = set()
+    for sub_results in results_by_query.values():
+        for r in sub_results:
+            href = r.get("href")
+            if href and href not in seen:
+                seen.add(href)
+                urls.append(href)
+    timings["search"] = time.time() - t_search
 
     # 2. Scraping des pages trouvées
     t1 = time.time()
@@ -54,11 +73,23 @@ async def run_pipeline(query: str, verbose: bool = True) -> dict:
             "timings": timings,
         }
 
-    # 3. Chunking de chaque page scrapée
+   # 3. Chunking de chaque page scrapée
     t2 = time.time()
+    per_page_chunks = [rerank.chunk_text(page["text"], page["url"]) for page in scraped]
+
+    # Répartition équitable du budget de chunks entre les pages (round-robin)
+    # plutôt que de tout prendre sur les premières pages — une page très
+    # longue (article de fond) ne doit pas à elle seule saturer le budget
+    # envoyé au reranker et faire exploser le temps de traitement.
     all_chunks = []
-    for page in scraped:
-        all_chunks.extend(rerank.chunk_text(page["text"], page["url"]))
+    idx = 0
+    while len(all_chunks) < MAX_CHUNKS_TO_RERANK and any(idx < len(pc) for pc in per_page_chunks):
+        for page_chunks in per_page_chunks:
+            if idx < len(page_chunks):
+                all_chunks.append(page_chunks[idx])
+                if len(all_chunks) >= MAX_CHUNKS_TO_RERANK:
+                    break
+        idx += 1
     timings["chunk"] = time.time() - t2
 
     # 4. Reranking : on garde les chunks les plus pertinents

@@ -6,9 +6,12 @@ par rapport à la question de l'utilisateur, via un reranker cross-encoder
 open-source (gratuit, tourne en local sur CPU).
 """
 
+import math
+
 from sentence_transformers import CrossEncoder
 
-from config import CHUNK_OVERLAP, CHUNK_SIZE, RERANKER_MODEL, TOP_K_CHUNKS
+from config import (CHUNK_OVERLAP, CHUNK_SIZE, MIN_RERANK_SCORE,
+                     RERANKER_MODEL, TOP_K_CHUNKS)
 
 # Le modèle est chargé une seule fois au niveau module (coûteux à instancier).
 _model = None
@@ -53,18 +56,23 @@ def chunk_text(text: str, source_url: str, chunk_size: int = CHUNK_SIZE,
     return chunks
 
 
-def rerank(query: str, chunks: list[dict], top_k: int = TOP_K_CHUNKS) -> list[dict]:
+def rerank(query: str, chunks: list[dict], top_k: int = TOP_K_CHUNKS,
+           min_score: float = MIN_RERANK_SCORE) -> list[dict]:
     """
-    Classe les chunks par pertinence par rapport à la question,
-    et retourne les meilleurs.
+    Classe les chunks par pertinence par rapport à la question, filtre ceux
+    jugés hors-sujet, et retourne les meilleurs restants.
 
     Paramètres:
         query (str): question de l'utilisateur
         chunks (list[dict]): chunks candidats (issus de chunk_text)
-        top_k (int): nombre de chunks à conserver après tri
+        top_k (int): nombre de chunks à conserver après tri/filtrage
+        min_score (float): score minimum (0-1, après normalisation sigmoïde
+                            du score brut du cross-encoder) pour qu'un chunk
+                            soit conservé
 
     Retour:
-        list[dict]: chunks triés par pertinence décroissante, avec score ajouté
+        list[dict]: chunks triés par pertinence décroissante, avec les clés
+                     'score' (score brut) et 'score_norm' (0-1) ajoutées
     """
     if not chunks:
         return []
@@ -75,6 +83,17 @@ def rerank(query: str, chunks: list[dict], top_k: int = TOP_K_CHUNKS) -> list[di
 
     for chunk, score in zip(chunks, scores):
         chunk["score"] = float(score)
+        # Le cross-encoder retourne un score brut non borné (logit) ; on le
+        # ramène entre 0 et 1 pour avoir un seuil lisible.
+        chunk["score_norm"] = 1 / (1 + math.exp(-chunk["score"]))
 
     ranked = sorted(chunks, key=lambda c: c["score"], reverse=True)
-    return ranked[:top_k]
+    filtered = [c for c in ranked if c["score_norm"] >= min_score]
+
+    if not filtered:
+        # Si le filtre élimine tout (question très pointue, sources
+        # imparfaites), on garde quand même le meilleur chunk disponible
+        # plutôt que de retourner un pipeline complètement vide.
+        filtered = ranked[:1]
+
+    return filtered[:top_k]

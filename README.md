@@ -63,6 +63,7 @@ nécessaire à ce stade.
 3. Télécharger un modèle :
    ```bash
    ollama pull llama3.1:8b
+   ollama pull llama3.2:3b # Conseillé si le CPU n'est pas suffisamment performant
    ```
 4. Rien d'autre à faire : `config.py` est déjà réglé sur `LLM_BACKEND = "ollama"`
 

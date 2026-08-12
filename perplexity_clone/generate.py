@@ -17,6 +17,48 @@ import requests
 from config import (GROQ_API_KEY, GROQ_MODEL, LLM_BACKEND, MAX_ANSWER_TOKENS,
                      OLLAMA_HOST, OLLAMA_MODEL)
 
+def decompose_query(query: str) -> list[str]:
+    """
+    Décompose une question potentiellement complexe en 1 à 3 sous-requêtes
+    de recherche plus ciblées, via le LLM configuré. Si la question est
+    déjà simple, la fonction renvoie une liste à un seul élément (la
+    question d'origine, éventuellement reformulée).
+
+    Paramètres:
+        query (str): question de l'utilisateur
+
+    Retour:
+        list[str]: 1 à MAX_SUBQUERIES sous-requêtes de recherche
+
+    Note:
+        Ajoute un appel LLM supplémentaire avant la recherche, donc un peu
+        de latence en plus. Désactivable via ENABLE_QUERY_DECOMPOSITION
+        dans config.py si la vitesse prime sur la précision.
+    """
+    from config import MAX_SUBQUERIES  # import local pour éviter un cycle
+
+    prompt = (
+        "Décompose la question suivante en 1 à 3 sous-requêtes de recherche "
+        "web courtes et complémentaires, une par ligne, sans numérotation, "
+        "sans tiret, sans commentaire. Si la question est déjà simple et "
+        "ne couvre qu'un seul sujet, renvoie uniquement cette question, "
+        "reformulée si besoin en requête de recherche efficace, sur une "
+        "seule ligne.\n\n"
+        f"Question: {query}\n\nSous-requêtes:"
+    )
+
+    if LLM_BACKEND == "ollama":
+        raw = generate_ollama(prompt)
+    elif LLM_BACKEND == "groq":
+        raw = generate_groq(prompt)
+    else:
+        raise ValueError(f"Backend LLM inconnu: {LLM_BACKEND}")
+
+    lines = [l.strip(" -•\t") for l in raw.strip().splitlines() if l.strip()]
+    lines = [l for l in lines if l][:MAX_SUBQUERIES]
+
+    return lines or [query]
+
 
 def build_prompt(query: str, chunks: list[dict]) -> str:
     """
@@ -42,9 +84,11 @@ def build_prompt(query: str, chunks: list[dict]) -> str:
         "pas de répondre, dis-le clairement.\n\n"
         f"Question: {query}\n\n"
         f"Sources disponibles:\n{sources_block}\n\n"
+        "Rappel avant de répondre : chaque affirmation factuelle doit être "
+        "suivie de sa citation [Source N] correspondante. N'invente aucune "
+        "information absente des sources ci-dessus.\n\n"
         "Réponse (avec citations [Source N]):"
     )
-
 
 def generate_ollama(prompt: str) -> str:
     """
