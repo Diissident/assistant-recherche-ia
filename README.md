@@ -14,7 +14,10 @@ perplexity_clone/
 ├── scraper.py      # téléchargement + nettoyage du texte des pages web
 ├── rerank.py       # découpage en chunks + classement par pertinence
 ├── generate.py     # appel au LLM (Ollama local ou Groq cloud gratuit)
-├── pipeline.py     # orchestrateur : point d'entrée du projet
+├── pipeline.py     # orchestrateur : point d'entrée du projet (CLI)
+├── api.py          # serveur HTTP local + sauvegarde des conversations (SQLite)
+├── frontend/
+│   └── index.html  # interface React (autonome, sans installation Node.js)
 ├── requirements.txt
 ├── docs/           # documentation détaillée de chaque module
 │   ├── config.md
@@ -23,7 +26,9 @@ perplexity_clone/
 │   ├── scraper.md
 │   ├── rerank.md
 │   ├── generate.md
-│   └── pipeline.md
+│   ├── pipeline.md
+│   ├── api.md
+│   └── frontend.md
 └── README.md       # ce fichier
 ```
 
@@ -39,8 +44,7 @@ python3 --version
 ### Étape 2 — Environnement virtuel (recommandé)
 
 ```bash
-git clone assistant-recherche-ia
-cd assistant-ia-perplexity/perplexity_clone
+cd perplexity_clone
 python3 -m venv venv
 source venv/bin/activate      # sous Windows : venv\Scripts\activate
 ```
@@ -48,7 +52,7 @@ source venv/bin/activate      # sous Windows : venv\Scripts\activate
 ### Étape 3 — Installer les dépendances
 
 ```bash
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 Toutes ces librairies sont gratuites et open-source, aucune clé API n'est
@@ -63,7 +67,6 @@ nécessaire à ce stade.
 3. Télécharger un modèle :
    ```bash
    ollama pull llama3.1:8b
-   ollama pull llama3.2:3b # Conseillé si le CPU n'est pas suffisamment performant
    ```
 4. Rien d'autre à faire : `config.py` est déjà réglé sur `LLM_BACKEND = "ollama"`
 
@@ -87,7 +90,7 @@ utilise l'option B.
 ### En ligne de commande
 
 ```bash
-python pipeline.py "Ma requête"
+python pipeline.py "Quelles sont les nouveautés en intelligence artificielle cette semaine ?"
 ```
 
 ### Dans du code Python
@@ -111,13 +114,40 @@ print(resultat["sources"])
 }
 ```
 
-## 4. Personnalisation
+## 4. Interface graphique (React) + sauvegarde des conversations
+
+Le projet inclut maintenant une interface web (React, sans installation
+Node.js requise) et une API locale qui sauvegarde l'historique des
+conversations dans un fichier SQLite.
+
+**Étape 1 — Lancer l'API locale**, dans le dossier du projet :
+```bash
+python -m pip install -r requirements.txt   # inclut FastAPI/uvicorn désormais
+uvicorn api:app --reload
+```
+Laisse cette commande tourner (elle sert le pipeline sur `http://localhost:8000`).
+
+**Étape 2 — Ouvrir l'interface**, dans un second terminal ou simplement
+en double-cliquant sur le fichier :
+```
+frontend/index.html
+```
+Ça ouvre la page dans ton navigateur par défaut. Tant que l'API tourne,
+tu peux poser des questions, voir le détail des étapes du pipeline en
+direct, et retrouver tes conversations précédentes dans la barre latérale.
+
+Toutes les conversations sont stockées dans `conversations.db` (créé
+automatiquement à côté de `api.py`) — rien ne quitte ta machine.
+
+Voir `docs/api.md` et `docs/frontend.md` pour le détail technique.
+
+## 5. Personnalisation
 
 Tous les réglages (nombre de sources, taille des chunks, modèle utilisé,
 timeouts...) se trouvent dans `config.py`. Voir `docs/config.md` pour le
 détail de chaque paramètre.
 
-## 5. Limites à connaître
+## 6. Limites à connaître
 
 - **Pas d'index propriétaire** : contrairement à Perplexity, ce projet
   s'appuie sur DuckDuckGo à chaque requête — plus lent et moins exhaustif
@@ -133,7 +163,7 @@ détail de chaque paramètre.
   tiers, ses conditions peuvent changer. Ollama en local reste la seule
   option dont le coût ne dépend d'aucune politique commerciale externe.
 
-## 6. Aller plus loin
+## 7. Aller plus loin
 
 - Décomposer une question complexe en plusieurs sous-requêtes avant la
   recherche (fonction `search.search_multiple` déjà prête, pas encore
