@@ -7,6 +7,18 @@ dépendance à un CDN externe** (ni React, ni Babel, ni aucune librairie
 chargée depuis Internet). Seule requête réseau : les appels à l'API
 locale (`api.py`) sur `http://localhost:8000`.
 
+## Fichiers
+
+L'interface est répartie en trois fichiers, dans `frontend/` :
+
+- **`index.html`** — structure de la page uniquement (balises, zones
+  vides que le JS remplit dynamiquement). Charge `style.css` et `app.js`.
+- **`style.css`** — toute la mise en forme (couleurs, typographie,
+  disposition). Les couleurs sont centralisées en variables CSS (`:root`)
+  en haut du fichier.
+- **`app.js`** — toute la logique : état de l'application, appels à
+  l'API, fonctions de rendu qui réécrivent le HTML des zones concernées.
+
 ## Pourquoi pas React ?
 La première version utilisait React + Babel via CDN (unpkg.com). Si ce
 CDN est bloqué (pare-feu d'entreprise, antivirus, filtrage réseau), la
@@ -63,8 +75,8 @@ largement suffisant pour la taille de cette interface.
    (double-clic, ou `start frontend\index.html` sous Windows).
 
 ## Personnalisation
-- **Adresse de l'API** : constante `API` en haut du `<script>`.
-- **Palette de couleurs** : variables CSS dans `:root`.
+- **Adresse de l'API** : constante `API` en haut de `app.js`.
+- **Palette de couleurs** : variables CSS dans `:root`, en haut de `style.css`.
 - La police (IBM Plex Mono / Source Serif 4) est chargée depuis Google
   Fonts par confort visuel, mais n'est pas requise au fonctionnement — si
   elle ne charge pas (pas d'accès Internet), le navigateur retombe

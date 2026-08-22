@@ -107,7 +107,7 @@ def generate_ollama(prompt: str) -> str:
     resp = requests.post(
         f"{OLLAMA_HOST}/api/generate",
         json={"model": OLLAMA_MODEL, "prompt": prompt, "stream": False},
-        timeout=500,
+        timeout=600,
     )
     resp.raise_for_status()
     return resp.json()["response"]
