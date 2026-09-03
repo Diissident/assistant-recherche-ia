@@ -8,25 +8,46 @@
 </head>
 <body>
 
-<div id="sidebar">
-  <div class="brand">
-    <div class="brand-mark">§</div>
-    <div>
-      <div class="brand-title">Carnet de recherche</div>
-      <div class="brand-sub">assistant local · sans coût</div>
-    </div>
-  </div>
-  <button id="new-btn">+ Nouvelle recherche</button>
-  <div id="conv-list"></div>
+<!-- Rail d'icônes : toujours visible, il porte les deux actions globales. -->
+<div id="rail">
+  <div class="rail-mark">§</div>
+  <button id="new-btn" class="rail-btn rail-btn-accent" title="Nouvelle recherche">+</button>
+  <button id="toggle-btn" class="rail-btn" title="Afficher / masquer l'historique">&#8801;</button>
 </div>
 
+<!-- Panneau d'historique, repliable (glisse hors de l'écran). -->
+<aside id="sidebar">
+  <div class="side-title">Historique</div>
+  <div id="conv-list"></div>
+  <div class="side-foot">Tout est stocké en local</div>
+</aside>
+
 <div id="main">
+  <header id="topbar">
+    <span id="topbar-title">Carnet de recherche</span>
+    <span class="badge">assistant local</span>
+    <span id="api-badge" class="badge badge-ok"><span class="badge-dot"></span>API 8000</span>
+  </header>
+
   <div id="api-warning"></div>
+
+  <!-- Ligne de statut : remplace l'ancien encart « registre du pipeline ».
+       Une seule ligne animée ; les six étapes se déplient au clic. -->
+  <div id="status-bar"></div>
+
   <div id="thread"><div id="thread-inner"></div></div>
+
   <div id="composer">
     <div id="composer-inner">
-      <textarea id="input" rows="1" placeholder="Pose ta question de recherche…"></textarea>
-      <button id="send-btn">Envoyer</button>
+      <div id="composer-box">
+        <textarea id="input" rows="1" placeholder="Pose ta question de recherche…"></textarea>
+        <div id="composer-actions">
+          <span class="hint">&#8629; envoyer</span>
+          <span class="hint">&#8679;&#8629; retour ligne</span>
+          <button id="stop-btn" title="Interrompre la recherche en cours">Arrêter</button>
+          <button id="send-btn">Chercher</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
