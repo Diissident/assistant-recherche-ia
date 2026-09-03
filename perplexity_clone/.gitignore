@@ -1,0 +1,24 @@
+# Données locales : historique des conversations et cache disque. Ces
+# fichiers changent à chaque exécution et n'ont rien à faire dans le dépôt.
+conversations.db
+conversations.db-wal
+conversations.db-shm
+cache_data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environnement
+.env
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

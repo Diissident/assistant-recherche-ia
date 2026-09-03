@@ -46,24 +46,43 @@ largement suffisant pour la taille de cette interface.
 - **`renderLedger()`** — l'élément signature de l'interface : pendant
   qu'une question est traitée, affiche en direct les étapes du pipeline
   (décomposition, recherche, lecture des pages, tri par pertinence,
-  rédaction), un reflet honnête de ce qui se passe réellement côté
-  serveur plutôt qu'un simple indicateur générique
-- **`renderMessage(m)`** : affiche un tour de conversation ; pour les
+  rédaction) **avec leur durée mesurée**. Ces états proviennent des
+  événements `step` du flux SSE : c'est l'avancement réel du serveur, pas
+  une animation minutée côté navigateur.
+- **`renderMessage(m, idx)`** : affiche un tour de conversation ; pour les
   réponses de l'assistant, ajoute les temps réels par étape
   (`timing-row`) et les sources citées (`sources`), avec des numéros
   `[N]` qui correspondent exactement aux `[Source N]` utilisés dans le
   texte généré
-- **`render()`** : orchestre le rendu complet, appelée après chaque
-  changement d'état
+- **`linkCitations(text, idx)`** : transforme chaque `[Source N]` du texte en
+  lien vers l'entrée correspondante de la liste des sources (clic → défilement
+  + surbrillance). Le texte est **échappé d'abord** ; la notation ne contenant
+  aucun caractère HTML, elle survit intacte à l'échappement.
+- **`patchStreaming()`** : mises à jour ciblées pendant le streaming (corps du
+  message + lignes du registre uniquement), throttlées par
+  `requestAnimationFrame`. Réécrire tout le fil à chaque fragment reçu
+  détruirait la sélection de texte et ferait ramer la page.
+- **`render()`** : orchestre le rendu complet, appelée aux changements d'état
+  structurels (envoi, fin de réponse, changement de conversation)
 
 ## Fonctions d'action (appels API)
 
 - **`checkHealth()`** : ping `/health`, affiche un avertissement rouge si
-  l'API locale n'est pas jointe
+  l'API locale n'est pas jointe, puis **retente toutes les 5 s** tant qu'elle
+  est absente — l'avertissement disparaît tout seul dès qu'uvicorn démarre.
 - **`loadConversations()`** / **`selectConversation(id)`** /
   **`deleteConversation(id)`** : gestion de l'historique
-- **`send()`** : envoie la question à `/ask`, affiche le registre
-  d'avancement pendant l'attente, puis la réponse
+- **`readEventStream(response, onEvent)`** : découpe le flux HTTP en événements
+  SSE et appelle `onEvent` pour chacun. `EventSource`, l'API navigateur dédiée
+  au SSE, ne conviendrait pas : elle ne sait émettre que des `GET`, or la
+  question part en `POST`.
+- **`errorDetail(response)`** : extrait un message lisible d'une réponse en
+  erreur (FastAPI renvoie `{detail: "..."}`, ou une liste pour les erreurs de
+  validation)
+- **`send()`** : envoie la question à `/ask/stream`, met à jour le registre au
+  fil des étapes, affiche la réponse fragment par fragment, puis les sources
+- **`stop()`** : interrompt la requête en cours via `AbortController`. Le
+  serveur annule alors sa tâche et l'échange n'est pas enregistré.
 
 ## Lancement
 
@@ -84,13 +103,18 @@ largement suffisant pour la taille de cette interface.
   (`ui-monospace`, `Georgia`...).
 
 ## Limites connues
-- **Pas de streaming** : la réponse s'affiche d'un coup à la fin de la
-  génération, pas mot par mot.
 - **Un seul utilisateur** : la base SQLite n'est pas conçue pour un accès
   concurrent multi-utilisateurs ; pour un usage personnel, ce n'est pas
   un problème.
-- **Rendu "full re-render"** : chaque mise à jour réécrit le HTML des
-  zones concernées plutôt que de ne modifier que ce qui a changé (pas de
-  diff virtuel façon React). Sans impact perceptible à cette échelle
-  (quelques dizaines de messages), mais à garder en tête si l'interface
-  grossit beaucoup.
+- **Rendu "full re-render"** hors streaming : les changements structurels
+  réécrivent le HTML des zones concernées plutôt que de ne modifier que ce qui
+  a changé (pas de diff virtuel façon React). Le streaming, lui, passe par des
+  mises à jour ciblées (`patchStreaming`). Sans impact perceptible à cette
+  échelle (quelques dizaines de messages), mais à garder en tête si
+  l'interface grossit beaucoup.
+- **Arrêt côté serveur** : « Arrêter » annule la tâche asyncio, donc la réponse
+  n'est ni affichée ni enregistrée — mais la génération déjà lancée dans son
+  thread continue jusqu'à son terme côté Ollama (Python ne sait pas tuer un
+  thread). L'interface est libérée immédiatement ; la machine, non.
+- **Pas de rendu Markdown** : la réponse est affichée en texte brut
+  (`white-space: pre-wrap`), seules les citations `[Source N]` sont enrichies.

@@ -16,9 +16,13 @@ perplexity_clone/
 ├── generate.py     # appel au LLM (Ollama local ou Groq cloud gratuit)
 ├── pipeline.py     # orchestrateur : point d'entrée du projet (CLI)
 ├── api.py          # serveur HTTP local + sauvegarde des conversations (SQLite)
-├── frontend/
-│   └── index.html  # interface React (autonome, sans installation Node.js)
+├── frontend/       # interface web (JS natif, aucune installation Node.js)
+│   ├── index.html  # structure de la page
+│   ├── style.css   # mise en forme
+│   └── app.js      # état, appels API, rendu
+├── tests/          # suite pytest (aucun appel réseau ni LLM réel)
 ├── requirements.txt
+├── requirements-dev.txt
 ├── docs/           # documentation détaillée de chaque module
 │   ├── config.md
 │   ├── cache.md
@@ -64,15 +68,17 @@ nécessaire à ce stade.
 
 1. Télécharger Ollama sur https://ollama.com (Mac, Windows, Linux)
 2. Lancer le service : `ollama serve` (souvent lancé automatiquement)
-3. Télécharger un modèle :
+3. Télécharger le modèle réglé par défaut dans `config.py` :
    ```bash
-   ollama pull llama3.1:8b
+   ollama pull llama3.2:3b
    ```
 4. Rien d'autre à faire : `config.py` est déjà réglé sur `LLM_BACKEND = "ollama"`
 
-Attention : ce modèle nécessite environ 8 Go de RAM libre (16 Go
-recommandés pour un usage confortable). Si ta machine est trop limitée,
-utilise l'option B.
+Ce modèle 3B tient dans environ 3 Go de RAM et reste utilisable sur un CPU
+modeste — c'est le plus gros levier de vitesse du projet. Si ta machine est
+confortable (16 Go+), `llama3.1:8b` donne des réponses sensiblement meilleures :
+`ollama pull llama3.1:8b`, puis change `OLLAMA_MODEL` dans `config.py`. Si au
+contraire la génération reste trop lente, utilise l'option B.
 
 **Option B : Groq (cloud, tier gratuit)**
 
@@ -107,17 +113,19 @@ print(resultat["sources"])
 
 ```python
 {
-    "query": "...",           # la question posée
-    "answer": "...",          # la réponse générée, avec citations [Source N]
-    "sources": ["url1", ...], # les URLs effectivement utilisées
-    "timings": {...}          # temps (secondes) de chaque étape du pipeline
+    "query": "...",   # la question posée
+    "answer": "...",  # la réponse générée, avec citations [Source N]
+    "sources": [      # une entrée par page distincte, numérotée comme les citations
+        {"n": 1, "url": "https://..."},
+    ],
+    "timings": {...}  # temps (secondes) de chaque étape du pipeline
 }
 ```
 
-## 4. Interface graphique (React) + sauvegarde des conversations
+## 4. Interface graphique + sauvegarde des conversations
 
-Le projet inclut maintenant une interface web (React, sans installation
-Node.js requise) et une API locale qui sauvegarde l'historique des
+Le projet inclut une interface web (JavaScript natif, aucune installation
+Node.js ni CDN externe) et une API locale qui sauvegarde l'historique des
 conversations dans un fichier SQLite.
 
 **Étape 1 — Lancer l'API locale**, dans le dossier du projet :
@@ -133,8 +141,11 @@ en double-cliquant sur le fichier :
 frontend/index.html
 ```
 Ça ouvre la page dans ton navigateur par défaut. Tant que l'API tourne,
-tu peux poser des questions, voir le détail des étapes du pipeline en
-direct, et retrouver tes conversations précédentes dans la barre latérale.
+tu peux poser des questions, suivre les étapes du pipeline **en direct avec
+leur durée réelle**, voir la réponse s'écrire au fil de sa génération, cliquer
+sur les citations `[Source N]` pour rejoindre la source correspondante, et
+retrouver tes conversations précédentes dans la barre latérale. Le bouton
+« Arrêter » interrompt une recherche en cours.
 
 Toutes les conversations sont stockées dans `conversations.db` (créé
 automatiquement à côté de `api.py`) — rien ne quitte ta machine.
@@ -147,7 +158,20 @@ Tous les réglages (nombre de sources, taille des chunks, modèle utilisé,
 timeouts...) se trouvent dans `config.py`. Voir `docs/config.md` pour le
 détail de chaque paramètre.
 
-## 6. Limites à connaître
+## 6. Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+La suite ne fait **aucun appel réseau ni appel LLM réel** : recherche,
+scraping et génération sont simulés. Elle couvre le cache (TTL, corruption,
+valeurs `None`), le découpage en chunks, la sélection et le dédoublonnage des
+sources, le garde-fou SSRF du scraper, et l'API (validation, pagination, flux
+SSE, absence de message orphelin en cas d'échec du modèle).
+
+## 7. Limites à connaître
 
 - **Pas d'index propriétaire** : contrairement à Perplexity, ce projet
   s'appuie sur DuckDuckGo à chaque requête — plus lent et moins exhaustif
@@ -163,11 +187,14 @@ détail de chaque paramètre.
   tiers, ses conditions peuvent changer. Ollama en local reste la seule
   option dont le coût ne dépend d'aucune politique commerciale externe.
 
-## 7. Aller plus loin
+## 8. Aller plus loin
 
-- Décomposer une question complexe en plusieurs sous-requêtes avant la
-  recherche (fonction `search.search_multiple` déjà prête, pas encore
-  branchée dans `pipeline.py` par défaut)
-- Ajouter un mode "conversation" en gardant l'historique des échanges
-- Exposer le pipeline via une petite API locale (FastAPI, gratuit) pour
-  le brancher à une interface web ou à un autre agent
+- Rendre le Markdown de la réponse (titres, listes, gras) plutôt que du texte
+  brut
+- Envoyer l'historique de la conversation au LLM pour permettre les questions
+  de suivi (« et en 2024 ? ») — aujourd'hui chaque question est traitée
+  isolément, même à l'intérieur d'une conversation
+- Purger automatiquement `cache_data/` (les entrées jamais relues restent sur
+  le disque)
+- Remplacer DuckDuckGo par plusieurs moteurs en parallèle pour élargir la
+  couverture

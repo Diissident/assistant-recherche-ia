@@ -11,6 +11,15 @@ modèle cross-encoder open-source tournant en local (CPU suffisant).
 Fonction interne. Charge le modèle de reranking une seule fois (le
 chargement est coûteux en temps/mémoire) et le garde en mémoire pour les
 appels suivants (pattern singleton simple via variable globale `_model`).
+Un verrou (`threading.Lock`) évite que deux requêtes simultanées ne
+déclenchent deux chargements concurrents du même modèle au premier appel.
+
+### `warmup() -> None`
+Force le chargement du modèle en amont de la première question. Appelée au
+démarrage du serveur, dans un thread de fond (`WARMUP_RERANKER`) : sans ça, la
+toute première recherche paie 10 à 20 secondes de chargement sans aucun retour
+visible dans l'interface. Un échec de préchargement est journalisé sans
+empêcher le serveur de démarrer — le chargement sera simplement retenté.
 
 ### `chunk_text(text, source_url, chunk_size=CHUNK_SIZE, overlap=CHUNK_OVERLAP) -> list[dict]`
 Découpe un texte long en chunks de taille fixe approximative.
@@ -24,7 +33,10 @@ Découpe un texte long en chunks de taille fixe approximative.
   frontière entre deux chunks
 - **Retour** : liste de `{'text': str, 'url': str}`
 - **Détail d'implémentation** : les chunks résiduels de moins de 20 mots
-  (souvent en fin de texte) sont ignorés car trop peu informatifs
+  (souvent en fin de texte) sont ignorés car trop peu informatifs. Le découpage
+  s'arrête dès qu'une fenêtre atteint la fin du texte : continuer produirait un
+  dernier chunk **intégralement contenu dans le précédent**, envoyé au reranker
+  pour rien.
 
 ### `rerank(query, chunks, top_k=TOP_K_CHUNKS, min_score=MIN_RERANK_SCORE) -> list[dict]`
 Classe les chunks par pertinence, filtre ceux jugés hors-sujet, et retourne
@@ -35,8 +47,9 @@ les meilleurs restants.
 - **Paramètre** `top_k` : nombre de chunks à garder après tri/filtrage
 - **Paramètre** `min_score` : seuil minimum (0-1) pour qu'un chunk soit
   conservé, appliqué au score normalisé (voir ci-dessous)
-- **Retour** : chunks triés par score décroissant, avec les clés `score`
-  (score brut du cross-encoder) et `score_norm` (0-1) ajoutées
+- **Retour** : **de nouveaux dicts** triés par score décroissant, avec les clés
+  `score` (score brut du cross-encoder) et `score_norm` (0-1) ajoutées. Les
+  dicts passés en entrée ne sont pas modifiés.
 - **Détail** : le cross-encoder renvoie un score brut non borné (un logit).
   Il est passé dans une sigmoïde (`1 / (1 + e^-score)`) pour obtenir une
   valeur entre 0 et 1, plus simple à seuiller. Si le filtrage élimine tous

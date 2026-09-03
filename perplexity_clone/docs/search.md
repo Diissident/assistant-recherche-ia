@@ -13,14 +13,19 @@ Recherche synchrone (bloquante).
 - **Paramètre** `max_results` : nombre max de résultats souhaités
 - **Retour** : liste de dicts, chacun avec les clés `title`, `href` (URL),
   `body` (extrait de la page)
-- **Comportement** : vérifie d'abord le cache (`cache.get`) avant d'appeler
-  DuckDuckGo ; stocke le résultat en cache après l'appel
+- **Comportement** : vérifie d'abord le cache avant d'appeler DuckDuckGo.
+  **Seules les recherches fructueuses sont mises en cache** : une liste vide
+  vient presque toujours d'un rate-limit passager, et la mémoriser 48h
+  condamnerait la requête bien après le retour à la normale.
+- **Lève** : les exceptions de DDGS (réseau, rate-limit). Les appelants
+  asynchrones les attrapent.
 
 ### `search_async(query: str, max_results: int = MAX_SEARCH_RESULTS) -> list[dict]`
 Version asynchrone de `search_sync`, exécutée dans un thread séparé
-(`run_in_executor`) car `duckduckgo-search` n'a pas d'API native async.
+(`asyncio.to_thread`) car `duckduckgo-search` n'a pas d'API native async.
 
-- Mêmes paramètres et retour que `search_sync`
+- **Retour** : les résultats, ou une **liste vide** en cas d'échec. Une
+  sous-requête qui échoue ne doit pas priver le pipeline des autres.
 
 ### `search_multiple(queries: list[str]) -> dict[str, list[dict]]`
 Lance plusieurs recherches en parallèle — utile si la question initiale
@@ -28,7 +33,11 @@ est décomposée en plusieurs sous-requêtes (ex: une question complexe
 transformée en 2-3 recherches ciblées).
 
 - **Paramètre** `queries` : liste de requêtes à exécuter
-- **Retour** : dict associant chaque requête à ses résultats
+- **Retour** : dict associant chaque requête à ses résultats ; une sous-requête
+  en échec est présente avec une liste vide
+- **Détail** : `asyncio.gather(..., return_exceptions=True)`. Sans ce réglage,
+  une seule sous-requête rate-limitée par DuckDuckGo ferait échouer **toute**
+  la phase de recherche.
 
 ## Bibliographie / dépendance
 - `duckduckgo-search` (PyPI) : wrapper Python non-officiel pour DuckDuckGo,

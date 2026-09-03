@@ -1,8 +1,15 @@
 # Toutes ces librairies sont gratuites et open-source.
-ddgs>=1.0.0
-trafilatura>=1.9.0
-aiohttp>=3.9.0
-sentence-transformers>=3.0.0
-requests>=2.31.0
-fastapi>=0.110.0
-uvicorn>=0.29.0
+#
+# Les bornes hautes (<X.0.0) évitent qu'une future version majeure ne casse
+# le projet à la prochaine installation, tout en laissant passer les
+# correctifs de sécurité. Les versions indiquées en commentaire sont celles
+# avec lesquelles le projet a été validé.
+
+ddgs>=9.0.0,<10.0.0                  # validé avec 9.14.4
+trafilatura>=2.0.0,<3.0.0            # validé avec 2.2.0
+aiohttp>=3.9.0,<4.0.0                # validé avec 3.14.3
+sentence-transformers>=3.0.0,<6.0.0  # validé avec 5.7.0
+requests>=2.31.0,<3.0.0              # validé avec 2.34.2
+fastapi>=0.110.0,<1.0.0              # validé avec 0.141.1
+uvicorn>=0.29.0,<1.0.0               # validé avec 0.52.1
+pydantic>=2.7.0,<3.0.0               # validé avec 2.13.4 (field_validator = API v2)
