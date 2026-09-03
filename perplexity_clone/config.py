@@ -27,6 +27,16 @@ SEARCH_TIMEOUT = 5                # secondes avant abandon d'une requête de rec
 SCRAPE_TIMEOUT = 3                # secondes avant abandon du scraping d'une page
 MAX_CONCURRENT_SCRAPES = 8        # nombre de pages scrapées en parallèle
 MIN_TEXT_LENGTH = 200             # caractères minimum pour garder une page
+MAX_PAGE_BYTES = 2_000_000        # taille max du HTML téléchargé (2 Mo). Au-delà
+                                   # on abandonne la page : inutile de charger un
+                                   # document géant en mémoire pour en extraire
+                                   # quelques paragraphes.
+ALLOWED_CONTENT_TYPES = ("text/html", "application/xhtml+xml", "text/plain")
+ALLOW_PRIVATE_ADDRESSES = False   # si False, refuse de scraper localhost et les
+                                   # plages IP privées / lien-local (garde-fou
+                                   # SSRF : une page de résultats malveillante ne
+                                   # peut pas faire interroger le réseau local ni
+                                   # les endpoints de métadonnées cloud)
 
 # --- Chunking ---
 CHUNK_SIZE = 350                  # taille approx. d'un chunk en tokens
@@ -43,6 +53,10 @@ MIN_RERANK_SCORE = 0.3            # score minimum (0-1, après normalisation)
                                    # = plus strict (risque de sources vides
                                    # sur des questions pointues), plus bas
                                    # = plus permissif.
+WARMUP_RERANKER = True            # charge le cross-encoder au démarrage du
+                                   # serveur, en tâche de fond : sans ça, la
+                                   # toute première question paie ~10-20s de
+                                   # chargement de modèle sans aucun retour.
 
 # --- Décomposition de requête ---
 ENABLE_QUERY_DECOMPOSITION = True # décompose les questions complexes en
@@ -52,16 +66,33 @@ MAX_SUBQUERIES = 3                # nombre max de sous-requêtes générées
 # --- Génération LLM ---
 # Deux options gratuites : Ollama en local (aucune clé), ou Groq (clé API gratuite).
 LLM_BACKEND = "ollama"            # "ollama" ou "groq"
-OLLAMA_MODEL = "llama3.2:3b"      # 8B -> 3B : le plus gros levier sur CPU faible      # modèle local via Ollama (gratuit, tourne en local)
+OLLAMA_MODEL = "llama3.2:3b"      # 8B -> 3B : le plus gros levier sur CPU faible
 OLLAMA_HOST = "http://localhost:11434"
+OLLAMA_TIMEOUT = 180              # secondes. Génération en streaming : le timeout
+                                   # porte sur l'attente entre deux fragments, pas
+                                   # sur la durée totale de la réponse.
 
 GROQ_MODEL = "llama-3.1-8b-instant"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")  # clé gratuite sur console.groq.com
+GROQ_TIMEOUT = 60
 
 MAX_ANSWER_TOKENS = 400
+MAX_SUBQUERY_TOKENS = 120         # la décomposition ne produit que 1 à 3 lignes :
+                                   # inutile de laisser le modèle partir en
+                                   # digression, ça ne fait qu'ajouter de la latence
+
+# --- Requête utilisateur ---
+MAX_QUERY_LENGTH = 2000           # garde-fou : au-delà ce n'est plus une question
+                                   # de recherche, et ça sature le contexte du LLM
 
 # --- Cache ---
 CACHE_DIR = os.path.join(os.path.dirname(__file__), "cache_data")
 CACHE_TTL_HOURS = 48              # durée de vie du cache de recherche
+CACHE_FAILURE_TTL_HOURS = 1       # durée de vie plus courte pour les échecs de
+                                   # scraping : un timeout est souvent transitoire,
+                                   # inutile de condamner une page pendant 48h
+
+# --- Journalisation ---
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 os.makedirs(CACHE_DIR, exist_ok=True)

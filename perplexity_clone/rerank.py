@@ -6,15 +6,22 @@ par rapport à la question de l'utilisateur, via un reranker cross-encoder
 open-source (gratuit, tourne en local sur CPU).
 """
 
+import logging
 import math
+import threading
 
 from sentence_transformers import CrossEncoder
 
 from config import (CHUNK_OVERLAP, CHUNK_SIZE, MIN_RERANK_SCORE,
-                     RERANKER_MODEL, TOP_K_CHUNKS)
+                    RERANKER_MODEL, TOP_K_CHUNKS)
+
+logger = logging.getLogger(__name__)
 
 # Le modèle est chargé une seule fois au niveau module (coûteux à instancier).
-_model = None
+# Le verrou évite que deux requêtes simultanées ne déclenchent deux
+# chargements concurrents du même modèle au premier appel.
+_model: CrossEncoder | None = None
+_model_lock = threading.Lock()
 
 
 def _get_model() -> CrossEncoder:
@@ -24,8 +31,28 @@ def _get_model() -> CrossEncoder:
     """
     global _model
     if _model is None:
-        _model = CrossEncoder(RERANKER_MODEL)
+        with _model_lock:
+            if _model is None:
+                logger.info("Chargement du reranker %s…", RERANKER_MODEL)
+                _model = CrossEncoder(RERANKER_MODEL)
+                logger.info("Reranker prêt.")
     return _model
+
+
+def warmup() -> None:
+    """
+    Force le chargement du modèle en amont de la première question.
+
+    Appelée au démarrage du serveur (en tâche de fond) : sans ça, la toute
+    première recherche paie 10 à 20 secondes de chargement de modèle sans
+    aucun retour visible dans l'interface.
+    """
+    try:
+        _get_model()
+    except Exception as exc:
+        # Un échec de préchargement ne doit pas empêcher le serveur de
+        # démarrer : le chargement sera retenté à la première question.
+        logger.warning("Préchargement du reranker impossible : %s", exc)
 
 
 def chunk_text(text: str, source_url: str, chunk_size: int = CHUNK_SIZE,
@@ -49,9 +76,13 @@ def chunk_text(text: str, source_url: str, chunk_size: int = CHUNK_SIZE,
 
     for i in range(0, len(words), step):
         chunk_words = words[i:i + chunk_size]
-        if len(chunk_words) < 20:  # ignore les chunks résiduels trop courts
-            continue
-        chunks.append({"text": " ".join(chunk_words), "url": source_url})
+        if len(chunk_words) >= 20:  # ignore les chunks résiduels trop courts
+            chunks.append({"text": " ".join(chunk_words), "url": source_url})
+        # La fenêtre atteint la fin du texte : continuer produirait un dernier
+        # chunk entièrement contenu dans celui-ci (pur doublon envoyé au
+        # reranker).
+        if i + chunk_size >= len(words):
+            break
 
     return chunks
 
@@ -71,8 +102,9 @@ def rerank(query: str, chunks: list[dict], top_k: int = TOP_K_CHUNKS,
                             soit conservé
 
     Retour:
-        list[dict]: chunks triés par pertinence décroissante, avec les clés
-                     'score' (score brut) et 'score_norm' (0-1) ajoutées
+        list[dict]: nouveaux dicts triés par pertinence décroissante, avec les
+                     clés 'score' (score brut) et 'score_norm' (0-1) ajoutées.
+                     Les dicts passés en entrée ne sont pas modifiés.
     """
     if not chunks:
         return []
@@ -81,13 +113,18 @@ def rerank(query: str, chunks: list[dict], top_k: int = TOP_K_CHUNKS,
     pairs = [(query, c["text"]) for c in chunks]
     scores = model.predict(pairs)
 
+    scored = []
     for chunk, score in zip(chunks, scores):
-        chunk["score"] = float(score)
-        # Le cross-encoder retourne un score brut non borné (logit) ; on le
-        # ramène entre 0 et 1 avec une sigmoïde pour avoir un seuil lisible.
-        chunk["score_norm"] = 1 / (1 + math.exp(-chunk["score"]))
+        score = float(score)
+        scored.append({
+            **chunk,
+            "score": score,
+            # Le cross-encoder retourne un score brut non borné (logit) ; on le
+            # ramène entre 0 et 1 avec une sigmoïde pour avoir un seuil lisible.
+            "score_norm": 1 / (1 + math.exp(-score)),
+        })
 
-    ranked = sorted(chunks, key=lambda c: c["score"], reverse=True)
+    ranked = sorted(scored, key=lambda c: c["score"], reverse=True)
     filtered = [c for c in ranked if c["score_norm"] >= min_score]
 
     if not filtered:
